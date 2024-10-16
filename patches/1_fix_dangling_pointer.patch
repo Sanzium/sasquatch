@@ -1,0 +1,77 @@
+diff --git a/squashfs-tools/LZMA/lzma465/C/LzmaEnc.c b/squashfs-tools/LZMA/lzma465/C/LzmaEnc.c
+index 3a2c9da..0307184 100644
+--- a/squashfs-tools/LZMA/lzma465/C/LzmaEnc.c
++++ b/squashfs-tools/LZMA/lzma465/C/LzmaEnc.c
+@@ -239,6 +239,14 @@ typedef struct _CSeqInStreamBuf
+   SizeT rem;
+ } CSeqInStreamBuf;
+ 
++typedef struct _CSeqOutStreamBuf
++{
++  ISeqOutStream funcTable;
++  Byte *data;
++  SizeT rem;
++  Bool overflow;
++} CSeqOutStreamBuf;
++
+ static SRes MyRead(void *pp, void *data, size_t *size)
+ {
+   size_t curSize = *size;
+@@ -354,6 +362,8 @@ typedef struct _CLzmaEnc
+   ISeqInStream *inStream;
+   CSeqInStreamBuf seqBufInStream;
+ 
++  CSeqOutStreamBuf outStreamBuf;
++
+   CSaveState saveState;
+ } CLzmaEnc;
+ 
+@@ -2101,14 +2111,6 @@ void LzmaEnc_Finish(CLzmaEncHandle pp)
+   #endif
+ }
+ 
+-typedef struct _CSeqOutStreamBuf
+-{
+-  ISeqOutStream funcTable;
+-  Byte *data;
+-  SizeT rem;
+-  Bool overflow;
+-} CSeqOutStreamBuf;
+-
+ static size_t MyWrite(void *pp, const void *data, size_t size)
+ {
+   CSeqOutStreamBuf *p = (CSeqOutStreamBuf *)pp;
+@@ -2142,12 +2144,11 @@ SRes LzmaEnc_CodeOneMemBlock(CLzmaEncHandle pp, Bool reInit,
+   CLzmaEnc *p = (CLzmaEnc *)pp;
+   UInt64 nowPos64;
+   SRes res;
+-  CSeqOutStreamBuf outStream;
+ 
+-  outStream.funcTable.Write = MyWrite;
+-  outStream.data = dest;
+-  outStream.rem = *destLen;
+-  outStream.overflow = False;
++  p->outStreamBuf.funcTable.Write = MyWrite;
++  p->outStreamBuf.data = dest;
++  p->outStreamBuf.rem = *destLen;
++  p->outStreamBuf.overflow = False;
+ 
+   p->writeEndMark = False;
+   p->finished = False;
+@@ -2158,13 +2159,13 @@ SRes LzmaEnc_CodeOneMemBlock(CLzmaEncHandle pp, Bool reInit,
+   LzmaEnc_InitPrices(p);
+   nowPos64 = p->nowPos64;
+   RangeEnc_Init(&p->rc);
+-  p->rc.outStream = &outStream.funcTable;
++  p->rc.outStream = &p->outStreamBuf.funcTable;
+ 
+   res = LzmaEnc_CodeOneBlock(p, True, desiredPackSize, *unpackSize);
+   
+   *unpackSize = (UInt32)(p->nowPos64 - nowPos64);
+-  *destLen -= outStream.rem;
+-  if (outStream.overflow)
++  *destLen -= p->outStreamBuf.rem;
++  if (p->outStreamBuf.overflow)
+     return SZ_ERROR_OUTPUT_EOF;
+ 
+   return res;
